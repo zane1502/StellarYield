@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { Shield, AlertTriangle, CheckCircle, XCircle, RefreshCw, Info, Settings } from "lucide-react";
+import StatusBadge from '../../components/StatusBadge';
 
 // ── Types ───────────────────────────────────────────────────────────────
 
 interface CompatibilityIssue {
+  protocolName?: string;
   severity: 'critical' | 'high' | 'medium' | 'low';
   component: string;
   issue: string;
@@ -166,10 +168,7 @@ export default function CompatibilityPanel() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {STATUS_ICONS[report.overallStatus]}
-            <span className="text-lg font-bold capitalize" style={{ color: STATUS_COLORS[report.overallStatus] }}>
-              {report.overallStatus}
-            </span>
+            <StatusBadge variant={report.overallStatus === 'compatible' ? 'success' : report.overallStatus === 'degraded' ? 'warning' : 'danger'} label={report.overallStatus} compact />
           </div>
         </div>
 
@@ -184,12 +183,12 @@ export default function CompatibilityPanel() {
             <div className="space-y-1">
               {report.criticalIssues.slice(0, 3).map((issue, index) => (
                 <div key={index} className="text-sm text-red-300">
-                  • {issue.protocolName}: {issue.issue}
+                  - {issue.protocolName ?? issue.component}: {issue.issue}
                 </div>
               ))}
               {report.criticalIssues.length > 3 && (
                 <div className="text-sm text-red-300">
-                  • ... and {report.criticalIssues.length - 3} more
+                  - ... and {report.criticalIssues.length - 3} more
                 </div>
               )}
             </div>
@@ -209,10 +208,7 @@ export default function CompatibilityPanel() {
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                {STATUS_ICONS[protocol.status]}
-                <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                  {protocol.status}
-                </span>
+                <StatusBadge variant={protocol.status === 'compatible' ? 'success' : protocol.status === 'degraded' ? 'warning' : 'danger'} label={protocol.status} compact />
               </div>
               {protocol.autoUpdateAvailable && (
                 <div className="px-2 py-1 bg-[#6C5DD3]/20 text-[#6C5DD3] text-xs rounded">
@@ -254,7 +250,7 @@ export default function CompatibilityPanel() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              {STATUS_ICONS[selectedProtocol.status]}
+              <StatusBadge variant={selectedProtocol.status === 'compatible' ? 'success' : selectedProtocol.status === 'degraded' ? 'warning' : 'danger'} label={selectedProtocol.status} compact />
               <span className="text-lg font-bold capitalize" style={{ color: STATUS_COLORS[selectedProtocol.status] }}>
                 {selectedProtocol.status}
               </span>
@@ -325,7 +321,7 @@ export default function CompatibilityPanel() {
                       <div className="flex items-center gap-2">
                         {getSeverityIcon(issue.severity)}
                         <span className="font-semibold capitalize">{issue.severity}</span>
-                        <span className="text-gray-400">•</span>
+                        <span className="text-gray-400">-</span>
                         <span className="text-gray-300">{issue.component}</span>
                       </div>
                     </div>
@@ -382,8 +378,8 @@ export default function CompatibilityPanel() {
       {/* Footer Info */}
       <div className="text-center text-xs text-gray-400">
         <p>
-          Generated on {formatDate(report.generatedAt)} • 
-          Next check: {formatDate(report.nextCheckDue)} • 
+          Generated on {formatDate(report.generatedAt)} -
+          Next check: {formatDate(report.nextCheckDue)} -
           {report.protocols.length} protocols monitored
         </p>
       </div>

@@ -3,13 +3,17 @@ import {
   RouterProvider,
   Outlet,
   Link,
+  useLocation,
 } from "react-router-dom";
+import { lazy, useState } from "react";
 import Dashboard from "./components/Dashboard";
-import ApyDashboard from "./components/dashboard/ApyDashboard";
+const ApyDashboard = lazy(() => import("./components/dashboard/ApyDashboard"));
 import AIAdvisor from "./components/AIAdvisor";
 import Vault from "./components/Vault";
-import PortfolioPage from "./components/portfolio/PortfolioPage";
-import GovernanceDashboard from "./pages/governance/GovernanceDashboard";
+const PortfolioPage = lazy(() => import("./components/portfolio/PortfolioPage"));
+const GovernanceDashboard = lazy(
+  () => import("./pages/governance/GovernanceDashboard"),
+);
 import QuestsDashboard from "./pages/quests/QuestsDashboard";
 import ConnectWalletButton from "./components/wallet/ConnectWalletButton";
 import NotificationBell from "./components/Navigation/NotificationBell";
@@ -20,44 +24,55 @@ import PnLChart from "./features/pnl/PnLChart";
 import TaxExport from "./features/taxes/TaxExport";
 import ReferralDashboard from "./features/referrals/ReferralDashboard";
 import VestingDashboard from "./pages/vesting/VestingDashboard";
-import TransparencyDashboard from "./pages/transparency/TransparencyDashboard";
+const TransparencyDashboard = lazy(
+  () => import("./pages/transparency/TransparencyDashboard"),
+);
 import RiskChronology from "./pages/transparency/RiskChronology";
-import StressTestDashboard from "./pages/StressTestDashboard";
+import RelayerStatusPage from "./pages/transparency/RelayerStatusPage";
+const StressTestDashboard = lazy(() => import("./pages/StressTestDashboard"));
 import YieldForGood from "./features/donations/YieldForGood";
 import YieldCalculator from "./components/calculator/YieldCalculator";
 import StrategyLeaderboard from "./pages/leaderboard/StrategyLeaderboard";
 import TreasurySimulation from "./pages/treasury/TreasurySimulation";
+import WalletSessionReview from "./auth/WalletSessionReview";
 import { useWallet } from "./context/useWallet";
-import { useState } from "react";
+import RouteBoundary from "./components/common/RouteBoundary";
 import {
-  LayoutDashboard,
-  BarChart3,
-  BrainCircuit,
   Landmark,
-  PieChart,
-  ShieldCheck,
-  Trophy,
-  CreditCard,
-  Gift,
-  DollarSign,
-  FileSpreadsheet,
-  Users,
-  Lock,
-  Eye,
-  Heart,
+  Zap,
+  BarChart3,
+  Menu,
+  X,
   Settings,
   Bell,
-  Calculator,
-  TrendingUp,
-  AlertTriangle,
-  Vault as VaultIcon,
 } from "lucide-react";
 import "./index.css";
 import SettingsModal from "./features/settings/SettingsModal";
 import AlertsModal from "./features/alerts/AlertsModal";
+import StrategyComparison from "./pages/strategy/StrategyComparison";
+import { FragmentationDashboard } from "./features/fragmentation";
+import { ReallocationTimelinePlanner } from "./portfolio/ReallocationTimelinePlanner";
 
 // Vault IDs available for APY alerts (matches protocol names from yieldService)
 const VAULT_OPTIONS = ["Blend", "Soroswap", "DeFindex"];
+
+function GoalPlannerPage() {
+  return (
+    <ReallocationTimelinePlanner
+      planName="Goal Planner"
+      status="draft"
+      steps={[
+        {
+          stepId: "goal-planner-draft",
+          scheduledAt: new Date().toISOString(),
+          expectedFeeUsd: 0,
+          expectedRecoveryHours: 0,
+          allocations: { Blend: 40, Soroswap: 30, DeFindex: 30 },
+        },
+      ]}
+    />
+  );
+}
 
 // Layout Component
 const RootLayout = () => {
@@ -65,6 +80,9 @@ const RootLayout = () => {
   const [isOnRampOpen, setIsOnRampOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const location = useLocation();
+  const isHomePage = location.pathname === "/";
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -88,202 +106,110 @@ const RootLayout = () => {
         />
       )}
       {/* Navigation Bar */}
-      <nav className="glass-panel mx-4 mt-6 px-6 py-4 flex justify-between items-center mb-8 sticky top-4 z-50 shadow-2xl">
-        <div className="flex items-center gap-3">
-          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 w-10 h-10 rounded-full flex items-center justify-center shadow-lg shadow-indigo-500/30">
-            <span className="font-bold text-xl tracking-tighter">SY</span>
+      {!isHomePage && (
+        <nav className="app-nav glass-panel mx-3 mt-4 px-4 py-3.5 flex justify-between items-center mb-6 sticky top-3 z-50 shadow-2xl">
+          <div className="flex items-center gap-2 shrink-0">
+            <svg viewBox="0 0 256 256" fill="none" className="w-8 h-8 flex-shrink-0" xmlns="http://www.w3.org/2000/svg">
+              <path d="M 0 256 L 0 128 L 128 128 Z M 128 256 L 128 128 L 256 128 Z M 0 128 L 0 0 L 128 0 Z M 128 128 L 128 0 L 256 0 Z" fill="rgb(84, 84, 84)"></path>
+            </svg>
+            <h1 className="text-base font-bold tracking-wide text-slate-900">
+              Stellar Yield
+            </h1>
           </div>
-          <h1 className="text-xl font-bold tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
-            Stellar Yield
-          </h1>
-        </div>
 
-        <div className="flex gap-8 items-center text-sm font-medium text-gray-300">
-          <Link
-            to="/"
-            className="hover:text-white transition-colors flex items-center gap-2"
-          >
-            <LayoutDashboard size={18} /> Dashboard
-          </Link>
-          <Link
-            to="/apy"
-            className="hover:text-white transition-colors flex items-center gap-2"
-          >
-            <BarChart3 size={18} /> APY Compare
-          </Link>
-          <Link
-            to="/ai-advisor"
-            className="hover:text-white transition-colors flex items-center gap-2"
-          >
-            <BrainCircuit size={18} /> AI Advisor
-          </Link>
-          <Link
-            to="/stress"
-            className="hover:text-white transition-colors flex items-center gap-2"
-          >
-            <AlertTriangle size={18} /> Stress Test
-          </Link>
-          <Link
-            to="/vault"
-            className="hover:text-white transition-colors flex items-center gap-2"
-          >
-            <Landmark size={18} /> Vaults
-          </Link>
-          <Link
-            to="/strategy"
-            className="hover:text-white transition-colors flex items-center gap-2"
-          >
-            <Zap size={18} /> Strategies
-          </Link>
-          {isConnected && (
-            <Link
-              to="/portfolio"
-              className="hover:text-white transition-colors flex items-center gap-2"
-            >
-              <PieChart size={18} /> Portfolio
-            </Link>
-          )}
-          {isConnected && (
-            <Link
-              to="/calculator"
-              className="hover:text-white transition-colors flex items-center gap-2"
-            >
-              <Calculator size={18} /> Calculator
-            </Link>
-          )}
-          {isConnected && (
-            <Link
-              to="/planner"
-              className="hover:text-white transition-colors flex items-center gap-2"
-            >
-              <Target size={18} /> Goal Planner
-            </Link>
-          )}
-          <Link
-            to="/fragmentation"
-            className="hover:text-white transition-colors flex items-center gap-2"
-          >
-            <Network size={18} /> Fragmentation
-          </Link>
-          {isConnected && (
-            <Link
-              to="/governance"
-              className="hover:text-white transition-colors flex items-center gap-2"
-            >
-              <ShieldCheck size={18} /> Governance
-            </Link>
-          )}
-          <Link
-            to="/quests"
-            className="hover:text-white transition-colors flex items-center gap-2"
-          >
-            <Trophy size={18} /> Quests
-          </Link>
-          <Link
-            to="/leaderboard"
-            className="hover:text-white transition-colors flex items-center gap-2"
-          >
-            <Trophy size={18} /> Leaderboard
-          </Link>
-          <Link
-            to="/strategy-leaderboard"
-            className="hover:text-white transition-colors flex items-center gap-2"
-          >
-            <TrendingUp size={18} /> RAY Leaderboard
-          </Link>
-          {isConnected && (
-            <Link
-              to="/treasury"
-              className="hover:text-white transition-colors flex items-center gap-2"
-            >
-              <VaultIcon size={18} /> Treasury
-            </Link>
-          )}
-          <Link
-            to="/vesting"
-            className="hover:text-white transition-colors flex items-center gap-2"
-          >
-            <Lock size={18} /> Vesting
-          </Link>
-          <Link
-            to="/transparency"
-            className="hover:text-white transition-colors flex items-center gap-2"
-          >
-            <Eye size={18} /> Transparency
-          </Link>
-          {isConnected && (
-            <Link
-              to="/yield-for-good"
-              className="hover:text-white transition-colors flex items-center gap-2"
-            >
-              <Heart size={18} /> Yield for Good
-            </Link>
-          )}
-          {isConnected && (
-            <Link
-              to="/rewards"
-              className="hover:text-white transition-colors flex items-center gap-2"
-            >
-              <Gift size={18} /> Rewards
-            </Link>
-          )}
-          {isConnected && (
-            <Link
-              to="/pnl"
-              className="hover:text-white transition-colors flex items-center gap-2"
-            >
-              <DollarSign size={18} /> PnL
-            </Link>
-          )}
-          {isConnected && (
-            <Link
-              to="/taxes"
-              className="hover:text-white transition-colors flex items-center gap-2"
-            >
-              <FileSpreadsheet size={18} /> Tax Export
-            </Link>
-          )}
-          {isConnected && (
-            <Link
-              to="/referrals"
-              className="hover:text-white transition-colors flex items-center gap-2"
-            >
-              <Users size={18} /> Referrals
-            </Link>
-          )}
-          {isConnected && (
-            <button
-              onClick={() => setIsOnRampOpen(true)}
-              className="px-4 py-2 bg-indigo-500 hover:bg-indigo-400 text-white rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
-            >
-              <CreditCard size={14} /> Buy USDC
-            </button>
-          )}
-        </div>
+          <div className="hidden md:flex flex-1 min-w-0 nav-links">
+            <div className="flex gap-4 xl:gap-5 items-center text-[0.82rem] font-semibold text-slate-600 px-4">
+              <Link to="/" className="hover:text-slate-900 transition-colors flex items-center gap-1.5">
+                <Landmark size={15} /> Yield Vaults
+              </Link>
+              <Link to="/" className="hover:text-slate-900 transition-colors flex items-center gap-1.5">
+                <Zap size={15} /> Strategies
+              </Link>
+              <Link to="/" className="hover:text-slate-900 transition-colors flex items-center gap-1.5">
+                <BarChart3 size={15} /> APY Compare
+              </Link>
+            </div>
+          </div>
 
-        <div className="flex items-center gap-4">
-          <NotificationBell />
-          {isConnected && (
+          <div className="flex items-center gap-2 shrink-0">
+            <NotificationBell />
+            {isConnected && (
+              <button
+                type="button"
+                onClick={() => setIsAlertsOpen(true)}
+                aria-label="Open APY alerts"
+                className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
+              >
+                <Bell size={16} />
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setIsAlertsOpen(true)}
-              aria-label="Open APY alerts"
-              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
+              onClick={() => setIsSettingsOpen(true)}
+              aria-label="Open transaction settings"
+              className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
             >
-              <Bell size={18} />
+              <Settings size={16} />
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setIsSettingsOpen(true)}
-            aria-label="Open transaction settings"
-            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
+            <ConnectWalletButton />
+            {/* Mobile menu toggle — visible below md breakpoint */}
+            <button
+              type="button"
+              onClick={() => setIsDrawerOpen((v) => !v)}
+              aria-label={isDrawerOpen ? "Close navigation menu" : "Open navigation menu"}
+              aria-expanded={isDrawerOpen}
+              aria-controls="mobile-nav-drawer"
+              className="md:hidden p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              {isDrawerOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
+          </div>
+        </nav>
+      )}
+
+      {/* Mobile Navigation Drawer */}
+      {isDrawerOpen && (
+        <div
+          id="mobile-nav-drawer"
+          role="dialog"
+          aria-label="Navigation menu"
+          className="md:hidden fixed inset-0 z-40 flex"
+        >
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setIsDrawerOpen(false)}
+            aria-hidden="true"
+          />
+          {/* Drawer panel */}
+          <nav
+            className="relative ml-auto w-72 h-full glass-panel rounded-none rounded-l-2xl overflow-y-auto flex flex-col gap-1 px-4 py-6"
+            aria-label="Mobile navigation"
+            onClick={(event) => {
+              if ((event.target as HTMLElement).closest("a")) {
+                setIsDrawerOpen(false);
+              }
+            }}
           >
-            <Settings size={18} />
-          </button>
-          <ConnectWalletButton />
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-sm font-semibold text-gray-400 uppercase tracking-widest">Menu</span>
+              <button
+                type="button"
+                onClick={() => setIsDrawerOpen(false)}
+                aria-label="Close navigation menu"
+                className="p-1 rounded-lg text-gray-400 hover:text-white transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Primary routes */}
+            <Link to="/" className="drawer-link"><Landmark size={16} /> Yield Vaults</Link>
+            <Link to="/" className="drawer-link"><Zap size={16} /> Strategies</Link>
+            <Link to="/" className="drawer-link"><BarChart3 size={16} /> APY Compare</Link>
+          </nav>
         </div>
-      </nav>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 pb-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -305,7 +231,11 @@ const router = createBrowserRouter([
       },
       {
         path: "/apy",
-        element: <ApyDashboard />,
+        element: (
+          <RouteBoundary>
+            <ApyDashboard />
+          </RouteBoundary>
+        ),
       },
       {
         path: "/ai-advisor",
@@ -313,7 +243,11 @@ const router = createBrowserRouter([
       },
       {
         path: "/stress",
-        element: <StressTestDashboard />,
+        element: (
+          <RouteBoundary>
+            <StressTestDashboard />
+          </RouteBoundary>
+        ),
       },
       {
         path: "/vault",
@@ -329,7 +263,11 @@ const router = createBrowserRouter([
       },
       {
         path: "/portfolio",
-        element: <PortfolioPage />,
+        element: (
+          <RouteBoundary>
+            <PortfolioPage />
+          </RouteBoundary>
+        ),
       },
       {
         path: "/calculator",
@@ -345,7 +283,11 @@ const router = createBrowserRouter([
       },
       {
         path: "/governance",
-        element: <GovernanceDashboard />,
+        element: (
+          <RouteBoundary>
+            <GovernanceDashboard />
+          </RouteBoundary>
+        ),
       },
       {
         path: "/quests",
@@ -377,11 +319,19 @@ const router = createBrowserRouter([
       },
       {
         path: "/transparency",
-        element: <TransparencyDashboard />,
+        element: (
+          <RouteBoundary>
+            <TransparencyDashboard />
+          </RouteBoundary>
+        ),
       },
       {
         path: "/transparency/incidents",
         element: <RiskChronology />,
+      },
+      {
+        path: "/transparency/relayer",
+        element: <RelayerStatusPage />,
       },
       {
         path: "/yield-for-good",
@@ -390,6 +340,10 @@ const router = createBrowserRouter([
       {
         path: "/strategy-leaderboard",
         element: <StrategyLeaderboard />,
+      },
+      {
+        path: "/wallet-session",
+        element: <WalletSessionReview />,
       },
       {
         path: "/treasury",

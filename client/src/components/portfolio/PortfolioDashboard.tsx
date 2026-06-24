@@ -11,6 +11,8 @@ import { YieldFlowCanvas } from "../visualizations";
 import PortfolioVisualizer from "../visualizer/PortfolioVisualizer";
 import { ExposureMap } from "../../portfolio/ExposureMap";
 import PresetsPanel from "../../features/presets/PresetsPanel";
+import UnifiedActivityTimeline from "./UnifiedActivityTimeline";
+import PortfolioExport from "./PortfolioExport";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -125,12 +127,15 @@ export default function PortfolioDashboard({ walletAddress }: PortfolioDashboard
             {walletAddress.slice(0, 8)}...{walletAddress.slice(-8)}
           </p>
         </div>
-        <button
-          onClick={() => { setIsLoading(true); setTimeout(() => setIsLoading(false), 500); }}
-          className="btn-secondary flex items-center gap-2 text-sm"
-        >
-          <RefreshCw size={14} /> Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <PortfolioExport walletAddress={walletAddress} />
+          <button
+            onClick={() => { setIsLoading(true); setTimeout(() => setIsLoading(false), 500); }}
+            className="btn-secondary flex items-center gap-2 text-sm"
+          >
+            <RefreshCw size={14} /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -238,6 +243,8 @@ export default function PortfolioDashboard({ walletAddress }: PortfolioDashboard
       <div className="glass-panel p-6">
         <PresetsPanel walletAddress={walletAddress} />
       </div>
+
+      <UnifiedActivityTimeline walletAddress={walletAddress} />
 
       {/* Transaction History */}
       <div className="glass-panel p-6">

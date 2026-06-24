@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useWallet } from '../../context/useWallet';
+import { useWallet } from '../../../context/useWallet';
 import type { Contact, ContactData, ContactSuggestion } from '../types';
 import { 
   deriveEncryptionKey, 
@@ -48,6 +48,13 @@ interface UseContactsReturn extends UseContactsState {
   getSuggestions: (query: string) => Promise<ContactSuggestion[]>;
   validateContactData: (data: ContactData) => { isValid: boolean; errors: string[] };
   isDuplicate: (name: string, address: string, excludeId?: string) => boolean;
+}
+
+function validateContactData(data: ContactData): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  if (!isValidContactName(data.name)) errors.push('Name must be between 1 and 100 characters');
+  if (!isValidWalletAddress(data.address)) errors.push('Invalid wallet address format');
+  return { isValid: errors.length === 0, errors };
 }
 
 /**
@@ -99,7 +106,6 @@ export function useContacts(): UseContactsReturn {
       return;
     }
 
-    const query = state.searchQuery.toLowerCase();
     const filtered = state.contacts.filter(_contact => {
       // Note: We can't filter by decrypted data here without the key
       // This would need to be done on the decrypted data after loading
@@ -158,10 +164,6 @@ export function useContacts(): UseContactsReturn {
     const validation = validateContactData(data);
     if (!validation.isValid) {
       throw new Error(validation.errors.join(', '));
-    }
-
-    if (isDuplicate(data.name, data.address)) {
-      throw new Error('A contact with this name or address already exists');
     }
 
     setState(prev => ({ ...prev, loading: true, error: null }));
@@ -313,30 +315,11 @@ export function useContacts(): UseContactsReturn {
     }
   }, [encryptionKey]);
 
-  /**
-   * Validate contact data
-   */
-  const validateContactData = useCallback((data: ContactData): { isValid: boolean; errors: string[] } => {
-    const errors: string[] = [];
-
-    if (!isValidContactName(data.name)) {
-      errors.push('Name must be between 1 and 100 characters');
-    }
-
-    if (!isValidWalletAddress(data.address)) {
-      errors.push('Invalid wallet address format');
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-    };
-  }, []);
 
   /**
    * Check for duplicate contacts
    */
-  const isDuplicate = useCallback((name: string, address: string, excludeId?: string): boolean => {
+  const isDuplicate = useCallback((_name: string, _address: string, _excludeId?: string): boolean => {
     // Note: This would need actual decryption of contact data
     // For now, returning false as placeholder
     return false;

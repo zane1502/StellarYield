@@ -7,6 +7,7 @@ describe("validateServerEnv", () => {
     expect(result.errors).toEqual([]);
     expect(result.warnings).toEqual(
       expect.arrayContaining([
+        expect.stringContaining("DATABASE_URL"),
         expect.stringContaining("MONGODB_URI"),
         expect.stringContaining("RELAYER_SECRET_KEY"),
       ]),
@@ -18,6 +19,7 @@ describe("validateServerEnv", () => {
 
     expect(result.errors).toEqual(
       expect.arrayContaining([
+        expect.stringContaining("DATABASE_URL"),
         expect.stringContaining("MONGODB_URI"),
         expect.stringContaining("METRICS_TOKEN"),
         expect.stringContaining("RELAYER_SECRET_KEY"),

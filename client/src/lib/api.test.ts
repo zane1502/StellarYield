@@ -1,7 +1,21 @@
-import { describe, expect, it } from "vitest";
-import { apiUrl, getApiBaseUrl } from "./api";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import {
+  apiUrl,
+  getApiBaseUrl,
+  getApiBaseUrlState,
+} from "./api";
 
 describe("api URL helpers", () => {
+  const originalWindow = global.window;
+
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    global.window = originalWindow;
+  });
+
   const env = (values: Record<string, string>): ImportMetaEnv =>
     ({
       BASE_URL: "/",
@@ -12,7 +26,16 @@ describe("api URL helpers", () => {
       ...values,
     }) as ImportMetaEnv;
 
-  it("uses the local backend by default", () => {
+  it("uses the local backend by default when on localhost", () => {
+    global.window = { location: { hostname: "localhost" } } as any;
+    expect(getApiBaseUrl(env({}))).toBe("http://localhost:3001");
+  });
+
+  it("uses the local backend by default for IPv4 and IPv6 local hosts", () => {
+    global.window = { location: { hostname: "127.0.0.1" } } as any;
+    expect(getApiBaseUrl(env({}))).toBe("http://localhost:3001");
+
+    global.window = { location: { hostname: "::1" } } as any;
     expect(getApiBaseUrl(env({}))).toBe("http://localhost:3001");
   });
 
@@ -37,5 +60,16 @@ describe("api URL helpers", () => {
     const configuredEnv = env({ VITE_API_BASE_URL: "https://api.example.com/" });
     expect(apiUrl("api/yields", configuredEnv)).toBe("https://api.example.com/api/yields");
     expect(apiUrl("/api/yields", configuredEnv)).toBe("https://api.example.com/api/yields");
+  });
+
+  it("falls back to same-origin API routes when hosted env vars are missing", () => {
+    global.window = { location: { hostname: "stellar-yield-preview.vercel.app" } } as any;
+
+    expect(getApiBaseUrlState(env({}))).toEqual({
+      available: true,
+      baseUrl: "",
+    });
+    expect(getApiBaseUrl(env({}))).toBe("");
+    expect(apiUrl("/api/yields", env({}))).toBe("/api/yields");
   });
 });

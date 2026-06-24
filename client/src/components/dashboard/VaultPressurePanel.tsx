@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
 import type { VaultPressureMetrics, PressureLevel } from "../../../../server/src/services/vaultPressureService";
 
 const LEVEL_STYLES: Record<PressureLevel, { bg: string; text: string; label: string }> = {
@@ -32,9 +33,11 @@ function PressureBadge({ level }: { level: PressureLevel }) {
  * Does not expose individual user data — all values are aggregate-only.
  */
 export function VaultPressurePanel({ metrics, loading }: Props) {
+  const reducedMotion = useReducedMotion();
+
   if (loading) {
     return (
-      <div className="rounded-xl border border-white/10 bg-white/5 p-4 animate-pulse space-y-2">
+      <div className={`rounded-xl border border-white/10 bg-white/5 p-4 space-y-2 ${reducedMotion ? "" : "animate-pulse"}`}>
         <div className="h-4 w-40 rounded bg-white/10" />
         <div className="h-8 w-full rounded bg-white/10" />
       </div>

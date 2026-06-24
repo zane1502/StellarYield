@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { fetchDepositSimulation } from "./simulationService";
-import type { SimulationResult } from "../../../../../server/src/services/simulationService";
+import type { SimulationResult } from "./simulationService";
 
 interface DepositSimulatorProps {
   strategyId: string;

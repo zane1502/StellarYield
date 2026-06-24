@@ -1,5 +1,10 @@
 import NodeCache from "node-cache";
 import { freezeService } from "./freezeService";
+import {
+  strategyStateTransitionAuditService,
+  type StrategyLifecycleState,
+} from "./strategyStateTransitionAuditService";
+import { evaluateHealthScoreChange } from "./healthScoreChangeAlertService";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -114,13 +119,34 @@ export class StrategyHealthEngine {
       const signals = await this.collectHealthSignals(strategyId);
       
       // Calculate individual metrics
-      const metrics = await this.calculateMetrics(signals);
+      const metrics = this.calculateMetrics(signals);
       
       // Calculate overall score
       const overallScore = this.calculateOverallScore(metrics, signals);
       
       // Determine status
       const status = this.determineHealthStatus(overallScore, metrics);
+
+      // Map health status + freeze flag into lifecycle state for audit graph.
+      const lifecycleState: StrategyLifecycleState = freezeService.isFrozen(strategyId)
+        ? "frozen"
+        : status === "healthy"
+          ? "healthy"
+          : "degraded";
+
+      // #371 append-only lifecycle transition audit (must never block health rendering).
+      try {
+        strategyStateTransitionAuditService.updateFromHealth(
+          strategyId,
+          lifecycleState,
+          `health_status=${status}`,
+        );
+      } catch (err) {
+        console.warn(
+          `Failed to record lifecycle transition for ${strategyId}:`,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
       
       // Analyze trend
       const trend = this.analyzeTrend(strategyId, overallScore);
@@ -149,7 +175,17 @@ export class StrategyHealthEngine {
       
       // Cache the result
       cache.set(cacheKey, healthScore);
-      
+
+      // Evaluate health score change for alert dispatch (#527)
+      try {
+        evaluateHealthScoreChange(healthScore);
+      } catch (err) {
+        console.warn(
+          `Failed to evaluate health score change for ${strategyId}:`,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+
       // Auto-disable if necessary
       if (overallScore < this.config.autoDisableThreshold && !suppressUntil) {
         await this.handleAutoDisable(strategyId, healthScore);
@@ -203,6 +239,88 @@ export class StrategyHealthEngine {
 
     // Filter by reliability threshold
     return signals.filter(signal => signal.reliability >= this.config.signalReliabilityThreshold);
+  }
+
+  /**
+   * Calculate individual metrics from signals
+   */
+  private calculateMetrics(signals: HealthSignal[]): StrategyHealthMetrics {
+    const contractSafetySignals = signals.filter(s => s.source === 'contract');
+    const dataFreshnessSignals = signals.filter(s => s.source === 'backend');
+    const providerUptimeSignals = signals.filter(s => s.source === 'backend');
+    const liquiditySignals = signals.filter(s => s.source === 'market');
+    const executionSignals = signals.filter(s => s.source === 'monitoring');
+
+    return {
+      contractSafety: this.calculateMetricScore(contractSafetySignals),
+      dataFreshness: this.calculateMetricScore(dataFreshnessSignals),
+      providerUptime: this.calculateMetricScore(providerUptimeSignals),
+      liquidityConditions: this.calculateMetricScore(liquiditySignals),
+      executionOutcomes: this.calculateMetricScore(executionSignals),
+      volatilityIndex: Math.min(100, Math.max(0, 100 - (signals.find(s => s.metric === 'volatility')?.value || 0) * 10)),
+      errorRate: Math.min(100, Math.max(0, 100 - (signals.find(s => s.metric === 'error_rate')?.value || 0) * 100)),
+      latency: Math.min(100, Math.max(0, 100 - (signals.find(s => s.metric === 'latency')?.value || 0) / 10)),
+    };
+  }
+
+  /**
+   * Calculate metric score from signals
+   */
+  private calculateMetricScore(signals: HealthSignal[]): number {
+    if (signals.length === 0) return 50; // Default neutral score
+    
+    const weightedSum = signals.reduce((sum, signal) => sum + (signal.value * signal.weight), 0);
+    const totalWeight = signals.reduce((sum, signal) => sum + signal.weight, 0);
+    
+    return totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 50;
+  }
+
+  /**
+   * Calculate overall score from metrics
+   */
+  private calculateOverallScore(metrics: StrategyHealthMetrics, signals: HealthSignal[]): number {
+    const weights = {
+      contractSafety: 0.25,
+      dataFreshness: 0.15,
+      providerUptime: 0.20,
+      liquidityConditions: 0.15,
+      executionOutcomes: 0.15,
+      volatilityIndex: 0.05,
+      errorRate: 0.03,
+      latency: 0.02,
+    };
+
+    const score = Object.entries(weights).reduce((sum, [key, weight]) => {
+      const metricValue = metrics[key as keyof StrategyHealthMetrics];
+      return sum + (metricValue * weight);
+    }, 0);
+
+    return Math.round(Math.min(100, Math.max(0, score)));
+  }
+
+  /**
+   * Determine health status from score and metrics
+   */
+  private determineHealthStatus(overallScore: number, metrics: StrategyHealthMetrics): "healthy" | "degraded" | "critical" | "disabled" {
+    if (overallScore >= 80 && metrics.contractSafety >= 70) return 'healthy';
+    if (overallScore >= 60 && metrics.contractSafety >= 50) return 'degraded';
+    return 'critical';
+  }
+
+  /**
+   * Get default metrics for error cases
+   */
+  private getDefaultMetrics(): StrategyHealthMetrics {
+    return {
+      contractSafety: 0,
+      dataFreshness: 0,
+      providerUptime: 0,
+      liquidityConditions: 0,
+      executionOutcomes: 0,
+      volatilityIndex: 0,
+      errorRate: 100,
+      latency: 0,
+    };
   }
 
   /**
@@ -311,6 +429,91 @@ export class StrategyHealthEngine {
         reliability: 0.85,
       },
     ];
+  }
+
+  /**
+   * Calculate individual health metrics from signals
+   */
+  private async calculateMetrics(signals: HealthSignal[]): Promise<StrategyHealthMetrics> {
+    const metrics = this.getDefaultMetrics();
+    
+    if (signals.length === 0) return metrics;
+
+    const sourceMetrics: Record<string, { sum: number, count: number }> = {};
+    
+    signals.forEach(signal => {
+      if (!sourceMetrics[signal.source]) {
+        sourceMetrics[signal.source] = { sum: 0, count: 0 };
+      }
+      sourceMetrics[signal.source].sum += signal.value;
+      sourceMetrics[signal.source].count += 1;
+    });
+
+    if (sourceMetrics['contract']) metrics.contractSafety = sourceMetrics['contract'].sum / sourceMetrics['contract'].count;
+    if (sourceMetrics['monitoring']) {
+      metrics.dataFreshness = sourceMetrics['monitoring'].sum / sourceMetrics['monitoring'].count;
+      metrics.providerUptime = sourceMetrics['monitoring'].sum / sourceMetrics['monitoring'].count;
+    }
+    if (sourceMetrics['market']) {
+      metrics.liquidityConditions = sourceMetrics['market'].sum / sourceMetrics['market'].count;
+      metrics.volatilityIndex = sourceMetrics['market'].sum / sourceMetrics['market'].count;
+    }
+    if (sourceMetrics['backend']) {
+      metrics.errorRate = sourceMetrics['backend'].sum / sourceMetrics['backend'].count;
+      metrics.latency = 150; // Mock latency
+    }
+
+    return metrics;
+  }
+
+  /**
+   * Calculate overall health score
+   */
+  private calculateOverallScore(metrics: StrategyHealthMetrics, _signals: HealthSignal[]): number {
+    const weights = {
+      contractSafety: 0.35,
+      dataFreshness: 0.15,
+      providerUptime: 0.15,
+      liquidityConditions: 0.20,
+      executionOutcomes: 0.10,
+      errorRate: 0.05,
+    };
+
+    let score = 0;
+    score += metrics.contractSafety * weights.contractSafety;
+    score += metrics.dataFreshness * weights.dataFreshness;
+    score += metrics.providerUptime * weights.providerUptime;
+    score += metrics.liquidityConditions * weights.liquidityConditions;
+    score += metrics.executionOutcomes * weights.executionOutcomes;
+    score += (1 - metrics.errorRate) * weights.errorRate;
+
+    return Math.round(score * 100);
+  }
+
+  /**
+   * Determine health status based on score and metrics
+   */
+  private determineHealthStatus(score: number, metrics: StrategyHealthMetrics): 'healthy' | 'degraded' | 'critical' | 'disabled' {
+    if (score < this.thresholds.disableThreshold || metrics.contractSafety < 0.4) return 'disabled';
+    if (score < this.thresholds.critical || metrics.contractSafety < 0.6) return 'critical';
+    if (score < this.thresholds.degraded) return 'degraded';
+    return 'healthy';
+  }
+
+  /**
+   * Get default metrics
+   */
+  private getDefaultMetrics(): StrategyHealthMetrics {
+    return {
+      contractSafety: 1,
+      dataFreshness: 1,
+      providerUptime: 1,
+      liquidityConditions: 1,
+      executionOutcomes: 1,
+      volatilityIndex: 0.2,
+      errorRate: 0,
+      latency: 100,
+    };
   }
 
   /**

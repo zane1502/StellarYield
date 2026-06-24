@@ -210,7 +210,7 @@ export class ProtocolCompatibilityEngine {
       // Check each component
       const issues: CompatibilityIssue[] = [];
       for (const requirement of requirements) {
-        const componentIssues = await this.checkRequirement(protocolName, requirement, currentVersion);
+        const componentIssues = await this.checkComponentCompatibility(protocolName, requirement.component, requirement, currentVersion);
         issues.push(...componentIssues);
       }
 
@@ -229,9 +229,25 @@ export class ProtocolCompatibilityEngine {
         recommendations,
         autoUpdateAvailable,
       };
-    } catch {
+    } catch (error) {
       console.error('Failed to fetch protocol version:', { protocolName });
-      return null;
+      return {
+        protocolName,
+        currentVersion: 'unknown',
+        latestVersion: 'unknown',
+        status: 'incompatible' as const,
+        issues: [{
+          severity: 'critical' as const,
+          component: 'unknown',
+          issue: 'Failed to fetch protocol version',
+          impact: 'Cannot determine compatibility',
+          recommendation: 'Check protocol connectivity',
+          affectedStrategies: [],
+        }],
+        lastChecked: new Date().toISOString(),
+        recommendations: ['Check protocol connectivity'],
+        autoUpdateAvailable: false,
+      };
     }
   }
 
@@ -239,9 +255,10 @@ export class ProtocolCompatibilityEngine {
    * Check a specific compatibility requirement
    */
   private async checkComponentCompatibility(
+    protocolName: string,
     componentName: string,
     requirements: CompatibilityRequirement,
-    _component: string,
+    currentVersion: ProtocolVersion,
   ): Promise<CompatibilityIssue[]> {
     const issues: CompatibilityIssue[] = [];
 
@@ -273,7 +290,7 @@ export class ProtocolCompatibilityEngine {
       }
 
       // Breaking changes check
-      const breakingChangesCheck = await this.checkBreakingChanges(protocolName, _currentVersion, requirements);
+      const breakingChangesCheck = await this.checkBreakingChanges(protocolName, currentVersion.version, requirements);
       if (breakingChangesCheck.hasBreakingChanges) {
         issues.push({
           severity: breakingChangesCheck.affectsCriticalPath ? 'critical' : 'high',
@@ -285,12 +302,12 @@ export class ProtocolCompatibilityEngine {
         });
       }
 
-    } catch {
+    } catch (error) {
       issues.push({
         severity: 'medium',
         component: requirements.component,
         issue: 'Compatibility check failed',
-        impact: 'Unable to verify component compatibility',
+        impact: `Unable to verify component compatibility: ${error instanceof Error ? error.message : 'Unknown error'}`,
         recommendation: 'Manual verification required',
         affectedStrategies: [],
       });

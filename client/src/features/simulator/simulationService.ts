@@ -1,4 +1,28 @@
-import type { SimulationResult } from "../../../../../server/src/services/simulationService";
+export interface SimulationAllocation {
+  protocol: string;
+  amount: number;
+  percentage: number;
+}
+
+export interface SimulationFee {
+  type: string;
+  amount: number;
+}
+
+export interface SimulationResult {
+  isSimulationOnly: true;
+  allocations: SimulationAllocation[];
+  expectedShares: number;
+  fees: SimulationFee[];
+  postDepositExposure: {
+    expectedApy: number;
+  };
+  routing: {
+    path: string[];
+    expectedOutput: number;
+  };
+  warnings: string[];
+}
 
 export interface SimulationRequestParams {
   strategyId: string;

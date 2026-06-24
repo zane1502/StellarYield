@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { X, Send, ArrowDownRight } from 'lucide-react';
 import { AddressAutocomplete, ContactsModal } from '../index';
-import { ContactSuggestion } from '../types';
+import type { Contact, ContactSuggestion } from '../types';
 
 interface SendModalProps {
   isOpen: boolean;
@@ -43,6 +43,16 @@ export function SendModal({ isOpen, onClose, walletAddress, balance }: SendModal
     setRecipientAddress(contact.address);
     setSelectedContact(contact);
     setShowContacts(false);
+  };
+
+  const handleSavedContactSelect = (contact: Contact) => {
+    const suggestion: ContactSuggestion = {
+      id: contact.id,
+      name: 'Contact Name',
+      address: contact.encryptedAddress,
+      displayText: 'Contact Name',
+    };
+    handleContactSelect(suggestion);
   };
 
   /**
@@ -248,7 +258,7 @@ export function SendModal({ isOpen, onClose, walletAddress, balance }: SendModal
       <ContactsModal
         isOpen={showContacts}
         onClose={() => setShowContacts(false)}
-        onSelectContact={handleContactSelect}
+        onSelectContact={handleSavedContactSelect}
       />
     </>
   );

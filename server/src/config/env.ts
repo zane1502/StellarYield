@@ -23,6 +23,13 @@ export function validateServerEnv(env: Env = process.env): EnvValidationResult {
     errors.push("PORT must be a number when provided.");
   }
 
+  if (!hasValue(env.DATABASE_URL)) {
+    const message =
+      "DATABASE_URL is not set; Prisma-backed features and backend tests that require Postgres will fail.";
+    if (isProduction(env)) errors.push(message);
+    else warnings.push(message);
+  }
+
   if (!hasValue(env.MONGODB_URI)) {
     const message = "MONGODB_URI is not set; database-backed routes and snapshot jobs will be unavailable.";
     if (isProduction(env)) errors.push(message);

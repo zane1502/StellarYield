@@ -5,7 +5,7 @@
  * and fee behavior. Forecasts are modeled outcomes, not guaranteed results.
  */
 
-export type ProposalType = "fee_change" | "allocation_limit" | "strategy_param";
+export type ProposalType = "fee_change" | "allocation_limit" | "strategy_param" | "reward_change";
 
 export interface GovernanceForecastInput {
   proposalType: ProposalType;
@@ -15,6 +15,8 @@ export interface GovernanceForecastInput {
     exposurePct: number;
     feeRatePct: number;
     tvlUsd: number;
+    riskScore?: number;
+    vaultCount?: number;
   };
 }
 
@@ -32,6 +34,13 @@ export interface GovernanceForecastResult {
   parameters: Record<string, number>;
   baseline: GovernanceForecastInput["baseline"];
   forecast: ForecastDelta;
+  impactSummary: {
+    headline: string;
+    riskLevel: "low" | "medium" | "high";
+    noOp: boolean;
+    irreversible: boolean;
+    affectedVaults: string[];
+  };
   warnings: string[];
   disclaimer: string;
 }
@@ -141,6 +150,89 @@ function forecastStrategyParam(
   };
 }
 
+function forecastRewardChange(
+  params: Record<string, number>,
+  baseline: GovernanceForecastInput["baseline"],
+): { delta: ForecastDelta; warnings: string[] } {
+  const warnings: string[] = [];
+  const rewardApyDelta = params.rewardApyDelta ?? 0;
+  const isHighConfidence = params.isHighConfidence === 1;
+
+  if (!isHighConfidence) {
+    warnings.push("Unknown or incomplete schedules must not be treated as high-confidence positive yield.");
+  }
+
+  const projectedYield = baseline.yieldPct + rewardApyDelta;
+
+  return {
+    delta: {
+      yieldDeltaPct: Math.round(rewardApyDelta * 10000) / 10000,
+      exposureDeltaPct: 0,
+      feeRevenueDeltaUsd: 0,
+      projectedYieldPct: Math.round(projectedYield * 10000) / 10000,
+      projectedExposurePct: baseline.exposurePct,
+      projectedFeeRatePct: baseline.feeRatePct,
+    },
+    warnings,
+  };
+}
+
+function buildImpactSummary(
+  input: GovernanceForecastInput,
+  delta: ForecastDelta,
+  warnings: string[],
+): GovernanceForecastResult["impactSummary"] {
+  const noOp =
+    Math.abs(delta.yieldDeltaPct) < 0.0001 &&
+    Math.abs(delta.exposureDeltaPct) < 0.0001 &&
+    Math.abs(delta.feeRevenueDeltaUsd) < 0.01 &&
+    Math.abs(delta.projectedFeeRatePct - input.baseline.feeRatePct) < 0.0001;
+
+  const irreversible =
+    (input.proposalType === "fee_change" &&
+      (delta.projectedFeeRatePct === 0 || delta.projectedFeeRatePct === 100)) ||
+    (input.proposalType === "allocation_limit" &&
+      delta.projectedExposurePct === 0);
+
+  const baselineRisk = input.baseline.riskScore ?? 50;
+  const projectedRisk =
+    baselineRisk +
+    Math.max(0, delta.projectedExposurePct - input.baseline.exposurePct) * 0.6 +
+    (input.proposalType === "strategy_param" ? 8 : 0) +
+    (input.proposalType === "reward_change" ? 4 : 0);
+
+  const riskLevel =
+    warnings.length > 0 || projectedRisk >= 75
+      ? "high"
+      : projectedRisk >= 55
+        ? "medium"
+        : "low";
+
+  const affectedVaultCount = Math.max(1, input.baseline.vaultCount ?? 3);
+  const affectedVaults = Array.from(
+    { length: Math.min(affectedVaultCount, 4) },
+    (_, index) => `Vault-${index + 1}`,
+  );
+
+  let headline = "Proposal impact appears manageable.";
+  if (noOp) {
+    headline = "Proposal is effectively a no-op against the current baseline.";
+  } else if (riskLevel === "high") {
+    headline =
+      "Proposal may materially increase user risk or reduce reversibility.";
+  } else if (delta.yieldDeltaPct > 0) {
+    headline = "Proposal projects a positive yield change with bounded risk.";
+  }
+
+  return {
+    headline,
+    riskLevel,
+    noOp,
+    irreversible,
+    affectedVaults,
+  };
+}
+
 export function forecastGovernanceProposal(
   input: GovernanceForecastInput,
 ): GovernanceForecastResult {
@@ -155,6 +247,9 @@ export function forecastGovernanceProposal(
       break;
     case "strategy_param":
       result = forecastStrategyParam(input.parameters, input.baseline);
+      break;
+    case "reward_change":
+      result = forecastRewardChange(input.parameters, input.baseline);
       break;
     default:
       result = {
@@ -175,6 +270,7 @@ export function forecastGovernanceProposal(
     parameters: input.parameters,
     baseline: input.baseline,
     forecast: result.delta,
+    impactSummary: buildImpactSummary(input, result.delta, result.warnings),
     warnings: result.warnings,
     disclaimer: DISCLAIMER,
   };

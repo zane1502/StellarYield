@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from "recharts";
 import { Activity, AlertTriangle, CheckCircle, XCircle, TrendingUp, TrendingDown, Minus, RefreshCw, Settings } from "lucide-react";
+import StatusBadge from '../../components/StatusBadge';
+import { FreshnessBanner } from "../../components/dashboard/FreshnessBanner";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -147,13 +149,13 @@ export default function StrategyHealthPanel({ strategyIds = ['strategy_1', 'stra
 
   if (error) {
     return (
-      <div className="glass-panel p-8">
+      <div className="glass-panel p-8" data-testid="strategy-health-error">
         <div className="text-center py-12">
           <AlertTriangle className="mx-auto mb-4 text-red-400" size={48} />
-          <h3 className="text-lg font-semibold mb-2">Health Data Unavailable</h3>
+          <h3 className="text-lg font-semibold mb-2">Health data is currently unavailable</h3>
           <p className="text-gray-400 mb-4">{error}</p>
           <button onClick={fetchHealthScores} className="btn-primary">
-            Retry
+            Try again
           </button>
         </div>
       </div>
@@ -162,11 +164,13 @@ export default function StrategyHealthPanel({ strategyIds = ['strategy_1', 'stra
 
   if (healthScores.length === 0) {
     return (
-      <div className="glass-panel p-8">
+      <div className="glass-panel p-8" data-testid="strategy-health-empty">
         <div className="text-center py-12">
           <Activity className="mx-auto mb-4 text-gray-400" size={48} />
-          <h3 className="text-lg font-semibold mb-2">No Health Data</h3>
-          <p className="text-gray-400">No strategies found or health data unavailable.</p>
+          <h3 className="text-lg font-semibold mb-2">No strategy health data yet</h3>
+          <p className="text-gray-400">
+            Health scores will appear here once strategies report a snapshot.
+          </p>
         </div>
       </div>
     );
@@ -200,10 +204,11 @@ export default function StrategyHealthPanel({ strategyIds = ['strategy_1', 'stra
           >
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                {STATUS_ICONS[score.status]}
-                <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                  {score.status}
-                </span>
+                <StatusBadge
+                  variant={score.status === 'healthy' ? 'success' : score.status === 'degraded' ? 'warning' : score.status === 'critical' ? 'danger' : 'neutral'}
+                  label={score.status}
+                  compact
+                />
               </div>
               {getTrendIcon(score.trend)}
             </div>
@@ -251,11 +256,24 @@ export default function StrategyHealthPanel({ strategyIds = ['strategy_1', 'stra
               </p>
             </div>
             <div className="flex items-center gap-3">
-              {STATUS_ICONS[selectedStrategy.status]}
-              <span className="text-lg font-bold" style={{ color: getStatusColor(selectedStrategy.overallScore) }}>
-                {selectedStrategy.overallScore}/100
-              </span>
+              <div className="flex items-center gap-3">
+                <StatusBadge
+                  variant={selectedStrategy.status === 'healthy' ? 'success' : selectedStrategy.status === 'degraded' ? 'warning' : selectedStrategy.status === 'critical' ? 'danger' : 'neutral'}
+                  label={selectedStrategy.status}
+                  compact
+                />
+                <span className="text-lg font-bold" style={{ color: getStatusColor(selectedStrategy.overallScore) }}>
+                  {selectedStrategy.overallScore}/100
+                </span>
+              </div>
             </div>
+          </div>
+
+          <div className="mb-6">
+            <FreshnessBanner 
+              lastUpdated={selectedStrategy.lastUpdated}
+              confidence={selectedStrategy.metrics.dataFreshness}
+            />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

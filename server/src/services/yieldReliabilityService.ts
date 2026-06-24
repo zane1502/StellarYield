@@ -62,6 +62,25 @@ export interface ProviderComparison {
   overallRank: number;
 }
 
+export interface OutageWindow {
+  startedAt: string;
+  endedAt: string | null; // null means the outage was ongoing at sample time
+  durationMinutes: number;
+}
+
+export interface ProviderUptimeReport {
+  providerId: string;
+  providerName: string;
+  uptimePct: number;         // 0-100
+  downtimePct: number;       // 0-100
+  unknownPct: number;        // 0-100, periods with no data
+  sampleCount: number;
+  outageWindowCount: number;
+  totalOutageMinutes: number;
+  recentOutages: OutageWindow[];  // up to 5 most recent outage windows
+  generatedAt: string;
+}
+
 // ── Configuration ───────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: ReliabilityConfig = {
@@ -517,7 +536,7 @@ export class YieldReliabilityEngine {
   /**
    * Get all provider IDs (mock implementation)
    */
-  private async getAllProviderIds(): Promise<Array<{id: string, name: string, source: string}>> {
+  public async getAllProviderIds(): Promise<Array<{id: string, name: string, source: string}>> {
     return [
       { id: 'blend_api', name: 'Blend Protocol', source: 'api' },
       { id: 'soroswap_api', name: 'Soroswap', source: 'api' },
@@ -550,6 +569,107 @@ export class YieldReliabilityEngine {
     } else {
       cache.flushAll();
     }
+  }
+
+  /**
+   * Build a provider uptime report from the in-memory reliability history.
+   * Each historical DataSourceReliability entry represents one sample.
+   * A sample is "up" when its status is 'high' or 'medium'.
+   */
+  getProviderUptimeReport(providerId: string, providerName: string): ProviderUptimeReport {
+    const history = this.historicalData.get(providerId) ?? [];
+
+    if (history.length === 0) {
+      return {
+        providerId,
+        providerName,
+        uptimePct: 100,
+        downtimePct: 0,
+        unknownPct: 0,
+        sampleCount: 0,
+        outageWindowCount: 0,
+        totalOutageMinutes: 0,
+        recentOutages: [],
+        generatedAt: new Date().toISOString(),
+      };
+    }
+
+    const upSamples = history.filter(
+      h => h.status === 'high' || h.status === 'medium',
+    ).length;
+    const downSamples = history.filter(
+      h => h.status === 'low' || h.status === 'unreliable',
+    ).length;
+    const total = history.length;
+
+    const uptimePct = Math.round((upSamples / total) * 1000) / 10;
+    const downtimePct = Math.round((downSamples / total) * 1000) / 10;
+    const unknownPct = Math.round(((total - upSamples - downSamples) / total) * 1000) / 10;
+
+    // Build outage windows: contiguous runs of low/unreliable samples
+    const outageWindows: OutageWindow[] = [];
+    let outageStart: string | null = null;
+
+    for (let i = 0; i < history.length; i++) {
+      const sample = history[i];
+      const isDown = sample.status === 'low' || sample.status === 'unreliable';
+
+      if (isDown && outageStart === null) {
+        outageStart = sample.lastUpdated;
+      } else if (!isDown && outageStart !== null) {
+        const startMs = new Date(outageStart).getTime();
+        const endMs = new Date(sample.lastUpdated).getTime();
+        outageWindows.push({
+          startedAt: outageStart,
+          endedAt: sample.lastUpdated,
+          durationMinutes: Math.round((endMs - startMs) / 60_000),
+        });
+        outageStart = null;
+      }
+    }
+
+    // Handle ongoing outage at end of history
+    if (outageStart !== null) {
+      const last = history[history.length - 1];
+      const startMs = new Date(outageStart).getTime();
+      const endMs = new Date(last.lastUpdated).getTime();
+      outageWindows.push({
+        startedAt: outageStart,
+        endedAt: null,
+        durationMinutes: Math.round((endMs - startMs) / 60_000),
+      });
+    }
+
+    const totalOutageMinutes = outageWindows.reduce(
+      (sum, w) => sum + w.durationMinutes,
+      0,
+    );
+    const recentOutages = outageWindows.slice(-5);
+
+    return {
+      providerId,
+      providerName,
+      uptimePct,
+      downtimePct,
+      unknownPct,
+      sampleCount: total,
+      outageWindowCount: outageWindows.length,
+      totalOutageMinutes,
+      recentOutages,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Get uptime reports for all known providers.
+   */
+  async getAllProviderUptimeReports(): Promise<ProviderUptimeReport[]> {
+    const providers = await this.getAllProviderIds();
+    // Ensure reliability scores are calculated so historicalData is populated
+    await this.getReliabilityScores(providers);
+    return providers.map(p =>
+      this.getProviderUptimeReport(p.id, p.name),
+    );
   }
 }
 

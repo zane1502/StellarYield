@@ -7,17 +7,31 @@ import { useState, useCallback, useMemo } from "react";
 import { Zap, AlertCircle, CheckCircle2 } from "lucide-react";
 import TxStatusTimeline from "../../components/transaction/TxStatusTimeline";
 import type { TxPhase } from "../../services/transactionPhase";
-import type { VaultAllocation } from "./types";
+import type { VaultAllocation, PortfolioPreset } from "./types";
 import {
   calculateBlendedApy,
   isValidAllocation,
   distributeAmount,
   normalizeWeights,
+  applyPreset,
 } from "./portfolioUtils";
+import RebalancePreview from "./RebalancePreviewPanel";
 
 export interface PortfolioBuilderProps {
   walletAddress: string | null;
   availableVaults: Array<{ contractId: string; name: string; apy: number }>;
+}
+
+function buildInitialAllocations(
+  availableVaults: PortfolioBuilderProps["availableVaults"],
+): VaultAllocation[] {
+  return availableVaults.slice(0, 3).map((v) => ({
+    vaultContractId: v.contractId,
+    vaultName: v.name,
+    apy: v.apy,
+    weight: 100 / Math.min(3, availableVaults.length),
+    amount: 0n,
+  }));
 }
 
 export default function PortfolioBuilder({
@@ -26,16 +40,21 @@ export default function PortfolioBuilder({
 }: PortfolioBuilderProps) {
   const [totalAmount, setTotalAmount] = useState("");
   const [allocations, setAllocations] = useState<VaultAllocation[]>(() =>
-    availableVaults.slice(0, 3).map((v) => ({
-      vaultContractId: v.contractId,
-      vaultName: v.name,
-      apy: v.apy,
-      weight: 100 / Math.min(3, availableVaults.length),
-      amount: 0n,
-    })),
+    buildInitialAllocations(availableVaults),
+  );
+  // Baseline ("current") position the rebalance sandbox previews against.
+  const [baselineAllocations] = useState<VaultAllocation[]>(() =>
+    buildInitialAllocations(availableVaults),
   );
   const [txPhase, setTxPhase] = useState<TxPhase>("idle");
   const [error, setError] = useState("");
+
+  const handlePresetApply = useCallback(
+    (preset: PortfolioPreset) => {
+      setAllocations(applyPreset(availableVaults, preset));
+    },
+    [availableVaults],
+  );
 
   const isValid = useMemo(() => isValidAllocation(allocations), [allocations]);
 
@@ -117,6 +136,29 @@ export default function PortfolioBuilder({
           />
         </div>
 
+        {/* Presets */}
+        <div className="space-y-2">
+          <label className="block text-sm text-gray-400">Allocation Presets</label>
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                "conservative",
+                "balanced",
+                "aggressive",
+                "stablecoin-heavy",
+              ] as PortfolioPreset[]
+            ).map((p) => (
+              <button
+                key={p}
+                onClick={() => handlePresetApply(p)}
+                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-xs font-medium rounded-md capitalize transition-colors border border-gray-700"
+              >
+                {p.replace("-", " ")}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Blended APY Display */}
         <div className="p-3 bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-lg">
           <p className="text-sm text-gray-400">Blended APY</p>
@@ -192,6 +234,16 @@ export default function PortfolioBuilder({
             </div>
           ))}
         </div>
+      )}
+
+      {/* Rebalance Simulation Sandbox */}
+      {totalAmount && Number(totalAmount) > 0 && (
+        <RebalancePreview
+          totalValueUsd={Number(totalAmount)}
+          currentAllocations={baselineAllocations}
+          targetAllocations={allocations}
+          disabled={!isValid}
+        />
       )}
 
       {/* Error Display */}

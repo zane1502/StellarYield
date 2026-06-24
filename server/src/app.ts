@@ -10,6 +10,7 @@ import { metricsMiddleware, getMetrics } from "./middleware/metrics";
 import { auditMiddleware } from "./middleware/audit";
 import { sendError } from "./utils/errorResponse";
 import { requestContextMiddleware } from "./middleware/requestContext";
+import { correlationIdMiddleware } from "./middleware/correlationId";
 import { errorHandler, requestLoggerMiddleware } from "./middleware/requestLogger";
 import yieldsRouter from "./routes/yields";
 import leaderboardRouter from "./routes/leaderboard";
@@ -17,6 +18,7 @@ import notificationsRouter from "./routes/notifications";
 import healthRouter from "./routes/health";
 import onrampRouter from "./routes/onramp";
 import zapRouter from "./routes/zap";
+import depositsRouter from "./routes/deposits";
 import pnlRouter from "./routes/pnl";
 import exportRouter from "./routes/export";
 import feesRouter from "./routes/fees";
@@ -35,8 +37,10 @@ import correlationRouter from "./routes/correlation";
 import strategiesRouter from "./routes/strategies";
 import treasuryRouter from "./routes/treasury";
 import governanceRouter from "./routes/governance";
+import activityTimelineRouter from "./routes/activityTimeline";
 import presetsRouter from "./routes/presets";
 import analyticsRouter from "./routes/analytics";
+
 import { createAuthChallenge, verifyAuthChallenge } from "./utils/stellarAuth";
 import {
   getRecommendationTimeline,
@@ -83,6 +87,7 @@ export function createApp() {
   app.use(cors());
   app.use(express.json());
   app.use(requestContextMiddleware);
+  app.use(correlationIdMiddleware);
   app.use(requestLoggerMiddleware);
   app.use(metricsMiddleware);
   app.use(auditMiddleware);
@@ -105,6 +110,7 @@ export function createApp() {
   app.use("/api/referrals", referralsRouter);
   app.use("/api/onramp", onrampRouter);
   app.use("/api/zap", zapRouter);
+  app.use("/api/deposits", depositsRouter);
   app.use("/api/users", pnlRouter);
   app.use("/api/users", exportRouter);
   app.use("/api/admin", adminRouter);
@@ -118,8 +124,10 @@ export function createApp() {
   app.use("/api/strategies", strategiesRouter);
   app.use("/api/treasury", treasuryRouter);
   app.use("/api/governance", governanceRouter);
+  app.use("/api/portfolio/activity", activityTimelineRouter);
   app.use("/api/presets", presetsRouter);
   app.use("/api/analytics", analyticsRouter);
+
 
   // Legacy JSON metrics (internal tooling)
   app.get("/api/metrics", getMetrics);
